@@ -1,6 +1,7 @@
 import re
 import random
 import time
+import os
 import math
 import numpy as np
 import nltk
@@ -11,9 +12,9 @@ import torch
 from torch import nn
 from torch import optim
 
-from data import load_data, create_vocabulary
-from models import BOW
-from utils import set_seed, print_parameters
+from data import load_data, create_vocabulary, build_pt_vocab
+from models import BOW, CBOW, DeepCBOW, PTDeepCBOW, LSTMClassifier, TreeLSTMClassifier
+from utils import set_seed, print_parameters, pdump, pload
 
 def prepare_example(example, vocab):
     """
@@ -64,6 +65,100 @@ def get_examples(data, shuffle=True, **kwargs):
     for example in data:
         yield example
 
+def get_minibatch(data, batch_size=25, shuffle=True):
+    """Return minibatches, optional shuffling"""
+    
+    if shuffle:
+        print("Shuffling training data")
+        random.shuffle(data)  # shuffle training data each epoch
+    
+    batch = []
+    
+    # yield minibatches
+    for example in data:
+        batch.append(example)
+        
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+        
+    # in case there is something left
+    if len(batch) > 0:
+        yield batch
+
+def pad(tokens, length, pad_value=1):
+    """add padding 1s to a sequence to that it has the desired length"""
+    return tokens + [pad_value] * (length - len(tokens))
+
+def prepare_minibatch(mb, vocab):
+    """
+    Minibatch is a list of examples.
+    This function converts words to IDs and returns
+    torch tensors to be used as input/targets.
+    """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    batch_size = len(mb)
+    maxlen = max([len(ex.tokens) for ex in mb])
+    
+    # vocab returns 0 if the word is not there
+    x = [pad([vocab.w2i.get(t, 0) for t in ex.tokens], maxlen) for ex in mb]
+    
+    x = torch.LongTensor(x)
+    x = x.to(device)
+    
+    y = [ex.label for ex in mb]
+    y = torch.LongTensor(y)
+    y = y.to(device)
+    
+    return x, y
+
+def evaluate(model, data, 
+             batch_fn=get_minibatch, prep_fn=prepare_minibatch,
+             batch_size=16):
+    """Accuracy of a model on given data set (using mini-batches)"""
+    correct = 0
+    total = 0
+    model.eval()  # disable dropout
+
+    for mb in batch_fn(data, batch_size=batch_size, shuffle=False):
+        x, targets = prep_fn(mb, model.vocab)
+        with torch.no_grad():
+            logits = model(x)
+        
+        predictions = logits.argmax(dim=-1).view(-1)
+        
+        # add the number of correct predictions to the total correct
+        correct += (predictions == targets.view(-1)).sum().item()
+        total += targets.size(0)
+
+    return correct, total, correct / float(total)
+
+def prepare_treelstm_minibatch(mb, vocab):
+    """
+    Returns sentences reversed (last word first)
+    Returns transitions together with the sentences.  
+    """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    batch_size = len(mb)
+    maxlen = max([len(ex.tokens) for ex in mb])
+        
+    # vocab returns 0 if the word is not there
+    # NOTE: reversed sequence!
+    x = [pad([vocab.w2i.get(t, 0) for t in ex.tokens], maxlen)[::-1] for ex in mb]
+    
+    x = torch.LongTensor(x)
+    x = x.to(device)
+    
+    y = [ex.label for ex in mb]
+    y = torch.LongTensor(y)
+    y = y.to(device)
+    
+    maxlen_t = max([len(ex.transitions) for ex in mb])
+    transitions = [pad(ex.transitions, maxlen_t, pad_value=2) for ex in mb]
+    transitions = np.array(transitions)
+    transitions = transitions.T  # time-major
+    
+    return (x, transitions), y
 
 def train_model(model, optimizer, train_data, dev_data, test_data,
                 num_iterations=10000, 
@@ -72,7 +167,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                 prep_fn=prepare_example,
                 eval_fn=simple_evaluate,
                 batch_size=1, eval_batch_size=None,
-                early_stop_crit=3):
+                early_stopping=False):
     """Train a model."""  
     iter_i = 0
     train_loss = 0.
@@ -81,7 +176,8 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
     criterion = nn.CrossEntropyLoss() # loss function
     best_eval = 0.
     best_iter = 0
-    
+    if early_stopping:
+        early_stop_crit = 5
     # store train loss and validation accuracy during training
     # so we can plot them afterwards
     losses = []
@@ -136,9 +232,9 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                     if accuracies[-1] >= accuracy: 
                         early_stopping_count += 1
                         print("iter %r: dev acc=%.4f. No val improvement: early stopping count=%r" % (iter_i, accuracy, early_stopping_count))  
-                else:
-                    early_stopping_count = 0
-                    print("iter %r: dev acc=%.4f. Val improvement: early stopping count=%r" % (iter_i, accuracy, early_stopping_count))  
+                    else:
+                        early_stopping_count = 0
+                        print("iter %r: dev acc=%.4f. Val improvement: early stopping count=%r" % (iter_i, accuracy, early_stopping_count))  
                 accuracies.append(accuracy)
             
                     
@@ -147,7 +243,9 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                     print("new highscore")
                     best_eval = accuracy
                     best_iter = iter_i
-                    path = "{}.pt".format(model.__class__.__name__)
+                    if not os.path.exists('./model_ckpts'):
+                        os.makedirs('./model_ckpts')
+                    path = "./model_ckpts/{}.pt".format(model.__class__.__name__)
                     ckpt = {
                         "state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
@@ -157,14 +255,14 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                     torch.save(ckpt, path)
 
             # done training
-            if iter_i == num_iterations or early_stopping_count >= early_stop_crit:
-                if early_stopping_count >= early_stop_crit:
+            if iter_i == num_iterations or (early_stopping and early_stopping_count >= early_stop_crit):
+                if early_stopping and early_stopping_count >= early_stop_crit:
                     print("Found no improvement for %r validation iterations. Apply early stopping.")
                 print("Done training")
                 
                 # evaluate on train, dev, and test with best model
                 print("Loading best model")
-                path = "{}.pt".format(model.__class__.__name__)        
+                path = "./model_ckpts/{}.pt".format(model.__class__.__name__)        
                 ckpt = torch.load(path)
                 model.load_state_dict(ckpt["state_dict"])
                 
@@ -182,41 +280,178 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                     "train acc={:.4f}, dev acc={:.4f}, test acc={:.4f}".format(
                         best_iter, train_acc, dev_acc, test_acc))
                 
-                return losses, accuracies
+                return losses, accuracies, best_iter, train_acc, dev_acc, test_acc
 
 
 
-def train(args):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print("Running on:", device)
+def train(args, seed, device, train_data, dev_data, test_data):
+    # Set random seed for reproducibility.
+    if seed:
+        set_seed(seed)
 
-    train_data, dev_data, test_data = load_data()
     v = create_vocabulary(train_data)
-
     i2t = ["very negative", "negative", "neutral", "positive", "very positive"]
     t2i = OrderedDict({p : i for p, i in zip(i2t, range(len(i2t)))})
 
     if args.model == 'BOW':
-        # Let's create a model.
-        # If everything is in place we can now train our first model!
         bow_model = BOW(len(v.w2i), len(t2i), vocab=v)
         print(bow_model)
 
         bow_model = bow_model.to(device)
 
         optimizer = optim.Adam(bow_model.parameters(), lr=0.0005)
-        bow_losses, bow_accuracies = train_model(
-            bow_model, optimizer, train_data=train_data, dev_data=dev_data, test_data=test_data,
-            num_iterations=5000, print_every=1000, eval_every=1000)
+        return train_model(bow_model, optimizer, 
+            train_data=train_data, dev_data=dev_data, test_data=test_data,
+            num_iterations=args.num_iterations, print_every=args.print_every, eval_every=args.eval_every, early_stopping=args.early_stopping)
 
+    elif args.model == 'CBOW':
+        cbow_model = CBOW(vocab_size=len(v.w2i),
+                  embedding_dim=300, 
+                  num_classes=5,
+                  vocab=v)
+        print(cbow_model)
+        cbow_model = cbow_model.to(device)
+        optimizer = optim.Adam(cbow_model.parameters(), lr=0.0005)
+        return train_model(cbow_model, optimizer, 
+            train_data=train_data, dev_data=dev_data, test_data=test_data,
+            num_iterations=args.num_iterations, print_every=args.print_every, eval_every=args.eval_every, early_stopping=args.early_stopping)
+
+    elif args.model == 'DeepCBOW':
+        dcbow_model = DeepCBOW(vocab_size=len(v.w2i),
+                  embedding_dim=300, 
+                  layer_dim=100,
+                  num_classes=5,
+                  vocab=v)
+        print(dcbow_model)
+        dcbow_model = dcbow_model.to(device)
+        optimizer = optim.Adam(dcbow_model.parameters(), lr=0.0005)
+        return train_model(dcbow_model, optimizer, 
+            train_data=train_data, dev_data=dev_data, test_data=test_data,
+            num_iterations=args.num_iterations, print_every=args.print_every, eval_every=args.eval_every, early_stopping=args.early_stopping)
+
+    else:
+        glove_file = open("glove.840B.300d.sst.txt")
+        word2vec_file = open("googlenews.word2vec.300d.txt")
+        if args.pt_embed == 'w2v':
+            pretrained_v, vectors = build_pt_vocab(word2vec_file)
+        elif args.pt_embed == 'glove':
+            pretrained_v, vectors = build_pt_vocab(glove_file)
+        
+        if args.model == 'pt_DeepCBOW':
+            pt_deep_cbow_model = PTDeepCBOW(vocab_size=len(pretrained_v.w2i),
+                                embedding_dim=300,
+                                hidden_dim=100,
+                                output_dim=5,
+                                vocab=pretrained_v)
+            print(pt_deep_cbow_model)
+
+            # copy pre-trained word vectors into embeddings table
+            pt_deep_cbow_model.embed.weight.data.copy_(torch.from_numpy(vectors))
+
+            # disable training the pre-trained embeddings
+            pt_deep_cbow_model.embed.weight.requires_grad = False
+
+            # move model to specified device
+            pt_deep_cbow_model = pt_deep_cbow_model.to(device)
+
+            # train the model
+            optimizer = optim.Adam(pt_deep_cbow_model.parameters(), lr=0.0005)
+            return train_model(pt_deep_cbow_model, optimizer,
+                train_data=train_data, dev_data=dev_data, test_data=test_data, 
+                num_iterations=args.num_iterations, print_every=args.print_every, eval_every=args.eval_every)
+
+        elif args.model == 'LSTM':
+            lstm_model = LSTMClassifier(len(pretrained_v.w2i), 300, 168, len(t2i), pretrained_v)
+
+            # copy pre-trained vectors into embeddings table
+            with torch.no_grad():
+                lstm_model.embed.weight.data.copy_(torch.from_numpy(vectors))
+                lstm_model.embed.weight.requires_grad = False
+
+            print(lstm_model)
+            print_parameters(lstm_model)  
+            lstm_model = lstm_model.to(device)
+            optimizer = optim.Adam(lstm_model.parameters(), lr=2e-4)
+
+            return train_model(lstm_model, optimizer, 
+                train_data=train_data, dev_data=dev_data, test_data=test_data, 
+                num_iterations=args.num_iterations, print_every=args.print_every, eval_every=args.eval_every,
+                batch_size=args.batch_size,
+                batch_fn=get_minibatch, 
+                prep_fn=prepare_minibatch,
+                eval_fn=evaluate)
+
+        elif args.model == 'TreeLSTM':
+            tree_model = TreeLSTMClassifier(
+                len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v)
+
+            with torch.no_grad():
+                tree_model.embed.weight.data.copy_(torch.from_numpy(vectors))
+                tree_model.embed.weight.requires_grad = False
+
+            print(tree_model)
+            print_parameters(tree_model)
+            tree_model = tree_model.to(device)
+            optimizer = optim.Adam(tree_model.parameters(), lr=2e-4)
+
+            return train_model(tree_model, optimizer, 
+                train_data=train_data, dev_data=dev_data, test_data=test_data, 
+                num_iterations=args.num_iterations, print_every=args.print_every, eval_every=args.eval_every,
+                prep_fn=prepare_treelstm_minibatch,
+                eval_fn=evaluate,
+                batch_fn=get_minibatch,
+                batch_size=args.batch_size, eval_batch_size=args.batch_size)
+    
+            
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type = str, default='BOW')
+    parser.add_argument('--model', type = str, default='BOW', choices=['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM'])
+    parser.add_argument('--pt_embed', type = str, default='w2v', choices=['w2v', 'glove'])
+    parser.add_argument('--num_iterations', type=int, default=30000)
+    parser.add_argument('--print_every', type=int, default=1000)
+    parser.add_argument('--eval_every', type=int, default=1000)
+    parser.add_argument('--batch_size', type=int, default=25)
+    parser.add_argument('--early_stopping', default=False, action='store_true')
+    parser.add_argument('--run_all', default=False, action='store_true')
     args = parser.parse_args()
+
+    # Print parsing arguments.
     print("#" * 80)
     print("RUNNING ARGUMENTS:")
     for arg in vars(args):
         print(arg, ":", getattr(args, arg))
     print("#" * 80)
-    train(args)
 
+    # Setup device.
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print("Running on:", device)
+    
+    # Load data.
+    train_data, dev_data, test_data = load_data()
+
+    # Single run.
+    if not args.run_all:
+        seed = 42
+        loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
+        print("Model:", model)
+        print("Train acc: {:.4f}, Val acc: {:.4f}, test acc: {:.4f}".format(train_acc, dev_acc, test_acc))
+        print("Best iteration:{}".format(best_iter))
+    
+    # Run all models 3 times with different seeds.
+    elif args.run_all:
+        for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:
+            for i, seed in enumerate([42, 43, 44]):
+                args.model = model
+                if model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW']:
+                    args.num_iterations = 30000
+                    args.eval_every=250
+                    args.print_every=250
+                else:
+                    args.num_iterations = 30000
+                    args.eval_every=250
+                    args.print_every=250
+                loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
+                print("\nModel:", model)
+                print("Run {}/{}, seed: {}".format(i+1, 3, seed))
+                print("Train acc: {:.4f}, Val acc: {:.4f}, test acc: {:.4f}".format(train_acc, dev_acc, test_acc))
+                print("Best iteration:{}\n".format(best_iter))

@@ -1,2 +1,5 @@
 *.pt
 __pycache__/
+model_ckpts/
+pickle_dumps/
+SLURM_output/

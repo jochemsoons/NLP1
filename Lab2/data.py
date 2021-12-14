@@ -2,6 +2,7 @@ from collections import namedtuple
 from collections import Counter, OrderedDict, defaultdict
 from nltk import Tree
 import re
+import numpy as np
 
 # this function reads in a textfile and fixes an issue with "\\"
 def filereader(path): 
@@ -98,3 +99,23 @@ def create_vocabulary(train_data):
     v.build()
     print("Vocabulary size:", len(v.w2i))
     return v
+
+def build_pt_vocab(embed_f):
+    print("Creating pretrained voculabary...")
+    v = Vocabulary()
+    vectors = []
+    vec_length = len(embed_f.readline().split()[1:])
+    vectors.append([0]* vec_length)
+    vectors.append([0] * vec_length)
+    for line in embed_f:
+        word = line.split()[0]
+        v.count_token(word)
+
+        vector = line.split()[1:]
+        vector = [float(weight) for weight in vector]
+        vectors.append(vector)
+
+    v.build()
+    print("Vocabulary size:", len(v.w2i))
+    vectors = np.stack(vectors, axis=0)
+    return v, vectors
