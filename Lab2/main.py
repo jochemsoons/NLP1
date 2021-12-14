@@ -177,7 +177,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
     best_eval = 0.
     best_iter = 0
     if early_stopping:
-        early_stop_crit = 5
+        early_stop_crit = 3
     # store train loss and validation accuracy during training
     # so we can plot them afterwards
     losses = []
@@ -245,7 +245,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                     best_iter = iter_i
                     if not os.path.exists('./model_ckpts'):
                         os.makedirs('./model_ckpts')
-                    path = "./model_ckpts/{}.pt".format(model.__class__.__name__)
+                    path = "./model_ckpts/{}_{}.pt".format(model.__class__.__name__, start)
                     ckpt = {
                         "state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
@@ -262,10 +262,14 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                 
                 # evaluate on train, dev, and test with best model
                 print("Loading best model")
-                path = "./model_ckpts/{}.pt".format(model.__class__.__name__)        
+                path = "./model_ckpts/{}_{}.pt".format(model.__class__.__name__, start)        
                 ckpt = torch.load(path)
                 model.load_state_dict(ckpt["state_dict"])
                 
+                # Remove checkpoint file.
+                if os.path.exists(path) and not args.keep_ckpts:
+                    os.remove(path)
+        
                 _, _, train_acc = eval_fn(
                     model, train_data, batch_size=eval_batch_size, 
                     batch_fn=batch_fn, prep_fn=prep_fn)
@@ -410,10 +414,11 @@ if __name__ == '__main__':
     parser.add_argument('--model', type = str, default='BOW', choices=['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM', 'all'])
     parser.add_argument('--pt_embed', type = str, default='w2v', choices=['w2v', 'glove'])
     parser.add_argument('--num_iterations', type=int, default=30000)
-    parser.add_argument('--print_every', type=int, default=1000)
-    parser.add_argument('--eval_every', type=int, default=1000)
+    parser.add_argument('--print_every', type=int, default=500)
+    parser.add_argument('--eval_every', type=int, default=500)
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
+    parser.add_argument('--keep_ckpts', default=False, action='store_true')
     args = parser.parse_args()
 
     # Print parsing arguments.
@@ -445,12 +450,12 @@ if __name__ == '__main__':
                 args.model = model
                 if model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW']:
                     args.num_iterations = 30000
-                    args.eval_every=250
-                    args.print_every=250
+                    args.eval_every=500
+                    args.print_every=500
                 else:
                     args.num_iterations = 25000
-                    args.eval_every=250
-                    args.print_every=250
+                    args.eval_every=500
+                    args.print_every=500
                 loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
                 print("\nModel:", model)
                 print("Run {}/{}, seed: {}".format(i+1, 3, seed))
