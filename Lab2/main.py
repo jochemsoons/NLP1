@@ -388,12 +388,8 @@ def train(args, seed, device, train_data, dev_data, test_data):
 
         elif args.model == 'TreeLSTM':
 
-            if args.childsum:
-                tree_model = TreeLSTMClassifier(
-                    len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v)
-            else:
-                tree_model = TreeLSTMClassifier(
-                    len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v)
+            tree_model = TreeLSTMClassifier(
+                len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v, childsum=args.childsum)
 
             with torch.no_grad():
                 tree_model.embed.weight.data.copy_(torch.from_numpy(vectors))
@@ -424,7 +420,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
     parser.add_argument('--run_all', default=False, action='store_true')
-    parser.add_argument('--childsum', default=False, action='store_true')
+    parser.add_argument('--childsum', type=bool, default=False)
 
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     args = parser.parse_args()
@@ -447,7 +443,7 @@ if __name__ == '__main__':
     if args.model != 'all':
         seed = 42
         loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
-        print("Model:", model)
+        print("Model:", args.model)
         print("Train acc: {:.4f}, Val acc: {:.4f}, test acc: {:.4f}".format(train_acc, dev_acc, test_acc))
         print("Best iteration:{}".format(best_iter))
     

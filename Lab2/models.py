@@ -219,7 +219,7 @@ class LSTMClassifier(nn.Module):
         logits = self.output_layer(final)
         return logits
 
-class ChildSumTreeLSTMCell(nn.module):
+class ChildSumTreeLSTMCell(nn.Module):
     """A Binary Tree LSTM cell with Child-Sum"""
 
     def __init__(self, input_size, hidden_size, bias=True):
@@ -230,7 +230,7 @@ class ChildSumTreeLSTMCell(nn.module):
         self.hidden_size = hidden_size
         self.bias = bias
 
-        self.reduce_layer = nn.Linear(2 * hidden_size, 5 * hidden_size)
+        self.reduce_layer = nn.Linear(hidden_size, 5 * hidden_size)
         self.dropout_layer = nn.Dropout(p=0.25)
 
         self.reset_parameters()
@@ -455,12 +455,12 @@ class TreeLSTM(nn.Module):
 class TreeLSTMClassifier(nn.Module):
     """Encodes sentence with a TreeLSTM and projects final hidden state"""
 
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, vocab):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, vocab, childsum=False):
         super(TreeLSTMClassifier, self).__init__()
         self.vocab = vocab
         self.hidden_dim = hidden_dim
         self.embed = nn.Embedding(vocab_size, embedding_dim, padding_idx=1)
-        self.treelstm = TreeLSTM(embedding_dim, hidden_dim)
+        self.treelstm = TreeLSTM(embedding_dim, hidden_dim, childsum=childsum)
         self.output_layer = nn.Sequential(     
             nn.Dropout(p=0.5),
             nn.Linear(hidden_dim, output_dim, bias=True)
