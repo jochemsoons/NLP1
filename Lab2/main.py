@@ -424,7 +424,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
     parser.add_argument('--run_all', default=False, action='store_true')
-    parser.add_argument('--childsum', type=bool, default=False)
+    parser.add_argument('--childsum', default=False, action='store_true')
 
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     parser.add_argument('--random_permute', default=False, action='store_true')
