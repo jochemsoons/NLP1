@@ -12,11 +12,11 @@ import torch
 from torch import nn
 from torch import optim
 
-from data import load_data, create_vocabulary, build_pt_vocab
+from data import load_data, create_vocabulary, build_pt_vocab, plot_data_statistics, split_sentence_lengths
 from models import BOW, CBOW, DeepCBOW, PTDeepCBOW, LSTMClassifier, TreeLSTMClassifier
 from utils import set_seed, print_parameters, pdump, pload
 
-def prepare_example(example, vocab):
+def prepare_example(example, vocab, random_permute=False):
     """
     Map tokens to their IDs for a single example
     """
@@ -90,7 +90,7 @@ def pad(tokens, length, pad_value=1):
     """add padding 1s to a sequence to that it has the desired length"""
     return tokens + [pad_value] * (length - len(tokens))
 
-def prepare_minibatch(mb, vocab):
+def prepare_minibatch(mb, vocab, random_permute=False):
     """
     Minibatch is a list of examples.
     This function converts words to IDs and returns
@@ -100,9 +100,11 @@ def prepare_minibatch(mb, vocab):
     batch_size = len(mb)
     maxlen = max([len(ex.tokens) for ex in mb])
     
-    # vocab returns 0 if the word is not there
-    x = [pad([vocab.w2i.get(t, 0) for t in ex.tokens], maxlen) for ex in mb]
-    
+    # Random permute sentence before padding.
+    if random_permute:
+        x = [pad(list(np.random.permutation([vocab.w2i.get(t, 0) for t in ex.tokens])), maxlen) for ex in mb]
+    else:
+        x = [pad([vocab.w2i.get(t, 0) for t in ex.tokens], maxlen) for ex in mb]
     x = torch.LongTensor(x)
     x = x.to(device)
     
@@ -114,14 +116,14 @@ def prepare_minibatch(mb, vocab):
 
 def evaluate(model, data, 
              batch_fn=get_minibatch, prep_fn=prepare_minibatch,
-             batch_size=16):
+             batch_size=16, random_permute=False):
     """Accuracy of a model on given data set (using mini-batches)"""
     correct = 0
     total = 0
     model.eval()  # disable dropout
 
     for mb in batch_fn(data, batch_size=batch_size, shuffle=False):
-        x, targets = prep_fn(mb, model.vocab)
+        x, targets = prep_fn(mb, model.vocab, random_permute=random_permute)
         with torch.no_grad():
             logits = model(x)
         
@@ -133,7 +135,7 @@ def evaluate(model, data,
 
     return correct, total, correct / float(total)
 
-def prepare_treelstm_minibatch(mb, vocab):
+def prepare_treelstm_minibatch(mb, vocab, random_permute=False):
     """
     Returns sentences reversed (last word first)
     Returns transitions together with the sentences.  
@@ -167,7 +169,8 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                 prep_fn=prepare_example,
                 eval_fn=simple_evaluate,
                 batch_size=1, eval_batch_size=None,
-                early_stopping=False):
+                early_stopping=False,
+                random_permute=False):
     """Train a model."""  
     iter_i = 0
     train_loss = 0.
@@ -192,7 +195,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
 
             # forward pass
             model.train()
-            x, targets = prep_fn(batch, model.vocab)
+            x, targets = prep_fn(batch, model.vocab, random_permute=random_permute)
             logits = model(x)
 
             B = targets.size(0)  # later we will use B examples per update
@@ -227,7 +230,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
             # evaluate
             if iter_i % eval_every == 0:
                 _, _, accuracy = eval_fn(model, dev_data, batch_size=eval_batch_size,
-                                        batch_fn=batch_fn, prep_fn=prep_fn)
+                                        batch_fn=batch_fn, prep_fn=prep_fn, random_permute=random_permute)
                 if len(accuracies) > 0:
                     if accuracies[-1] >= accuracy: 
                         early_stopping_count += 1
@@ -384,7 +387,8 @@ def train(args, seed, device, train_data, dev_data, test_data):
                 batch_fn=get_minibatch, 
                 prep_fn=prepare_minibatch,
                 eval_fn=evaluate,
-                early_stopping=args.early_stopping)
+                early_stopping=args.early_stopping,
+                random_permute=args.random_permute)
 
         elif args.model == 'TreeLSTM':
 
@@ -423,6 +427,9 @@ if __name__ == '__main__':
     parser.add_argument('--childsum', type=bool, default=False)
 
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
+    parser.add_argument('--random_permute', default=False, action='store_true')
+    parser.add_argument('--plot_data_statistics', default=False, action='store_true')
+    parser.add_argument('--split_sentence_lengths', default=False, action='store_true')
     args = parser.parse_args()
 
     # Print parsing arguments.
@@ -432,6 +439,13 @@ if __name__ == '__main__':
         print(arg, ":", getattr(args, arg))
     print("#" * 80)
 
+    # Random permute of input can only be performed for LSTM model:
+    if args.random_permute and args.model != 'LSTM':
+        raise AssertionError("Random permute experiment can only be performed for LSTM model")
+
+    if args.plot_data_statistics:
+        plot_data_statistics()
+
     # Setup device.
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Running on:", device)
@@ -439,17 +453,27 @@ if __name__ == '__main__':
     # Load data.
     train_data, dev_data, test_data = load_data()
 
-    # Single run.
-    if args.model != 'all':
-        seed = 42
-        loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
-        print("Model:", args.model)
-        print("Train acc: {:.4f}, Val acc: {:.4f}, test acc: {:.4f}".format(train_acc, dev_acc, test_acc))
-        print("Best iteration:{}".format(best_iter))
+    # Single model, run 4 times with different seeds.
+    if args.model != 'all' and not args.split_sentence_lengths:
+        scores = []
+        best_iters = []
+        for i, seed in enumerate([42, 43, 44]):
+            loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
+            print("\nModel:", args.model)
+            print("Run {}/{}, seed: {}".format(i+1, 3, seed))
+            print("Train acc: {:.4f}, Val acc: {:.4f}, test acc: {:.4f}".format(train_acc, dev_acc, test_acc))
+            print("Best iteration:{}\n".format(best_iter))
+            scores.append(test_acc*100)
+            best_iters.append(best_iter)
+        print("MODEL RESULTS:", args.model)
+        print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
+        print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
     
     # Run all models 3 times with different seeds.
-    elif args.model == 'all':
+    elif args.model == 'all' and not args.split_sentence_lengths:
         for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:
+            scores = []
+            best_iters = []
             for i, seed in enumerate([42, 43, 44]):
                 args.model = model
                 if model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW']:
@@ -461,7 +485,17 @@ if __name__ == '__main__':
                     args.eval_every=500
                     args.print_every=500
                 loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
+                scores.append(test_acc*100)
+                best_iters.append(best_iter)
                 print("\nModel:", model)
                 print("Run {}/{}, seed: {}".format(i+1, 3, seed))
                 print("Train acc: {:.4f}, Val acc: {:.4f}, test acc: {:.4f}".format(train_acc, dev_acc, test_acc))
                 print("Best iteration:{}\n".format(best_iter))
+            print("MODEL RESULTS:", model)
+            print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
+            print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
+
+    elif args.model == 'all' and args.split_sentence_lengths:
+        train_0, train_1, train_2, train_3 = split_sentence_lengths(train_data)
+        dev_0, dev_1, dev_2, dev_3 = split_sentence_lengths(train_data)
+        test_0, train_1, train_2, train_3 = split_sentence_lengths(train_data)
