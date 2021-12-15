@@ -21,6 +21,7 @@ def prepare_example(example, vocab, random_permute=False):
     Map tokens to their IDs for a single example
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     # vocab returns 0 if the word is not there (i2w[0] = <unk>)
     x = [vocab.w2i.get(t, 0) for t in example.tokens]
     
@@ -62,6 +63,7 @@ def get_examples(data, shuffle=True, **kwargs):
     if shuffle:
         print("Shuffling training data")
         random.shuffle(data)  # shuffle training data each epoch
+    
     for example in data:
         yield example
 
@@ -196,6 +198,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
             # forward pass
             model.train()
             x, targets = prep_fn(batch, model.vocab, random_permute=random_permute)
+
             logits = model(x)
 
             B = targets.size(0)  # later we will use B examples per update
@@ -288,7 +291,6 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                         best_iter, train_acc, dev_acc, test_acc))
                 
                 return losses, accuracies, best_iter, train_acc, dev_acc, test_acc
-
 
 
 def train(args, seed, device, train_data, dev_data, test_data):
@@ -428,7 +430,8 @@ if __name__ == '__main__':
 
     # arguments for supervision and/or node level supervision
     parser.add_argument('--supervision', default=False, action='store_true')
-    parser.add_argument('--node_level', default=False, action='store_true')
+
+    # parser.add_argument('--node_level', default=False, action='store_true')
 
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     parser.add_argument('--random_permute', default=False, action='store_true')
@@ -455,7 +458,7 @@ if __name__ == '__main__':
     print("Running on:", device)
     
     # Load data.
-    train_data, dev_data, test_data = load_data(supervision=args.supervision, node_level=args.node_level)
+    train_data, dev_data, test_data = load_data(supervision=args.supervision)
 
     # Single model, run 4 times with different seeds.
     if args.model != 'all' and not args.split_sentence_lengths:

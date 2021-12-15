@@ -7,6 +7,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
+Example = namedtuple("Example", ["tokens", "tree", "label", "transitions"])
+
 # this function reads in a textfile and fixes an issue with "\\"
 def filereader(path): 
     with open(path, mode="r", encoding="utf-8") as f:
@@ -25,35 +27,27 @@ def transitions_from_treestring(s):
     s = re.sub("\)", "1", s)
     return list(map(int, s.split()))
 
-def examplereader(path, lower=False):
+def examplereader(path, lower=False, supervision=False):
     """Returns all examples in a file one by one."""
     # A simple way to define a class is using namedtuple.
-    Example = namedtuple("Example", ["tokens", "tree", "label", "transitions"])
+
     for line in filereader(path):
         line = line.lower() if lower else line
-        tokens = tokens_from_treestring(line)
-        tree = Tree.fromstring(line)  # use NLTK's Tree
-        label = int(line[1])
-        trans = transitions_from_treestring(line)
-        yield Example(tokens=tokens, tree=tree, label=label, transitions=trans)
-
-def examplereader_sv(path, lower=False, node_level=False):
-    """Returns all node examples in a file one by one."""
-    # A simple way to define a class is using namedtuple.
-    Example = namedtuple("Example", ["tokens", "tree", "label", "transitions"])
-    for line in filereader(path):
         
-        subtrees = extract_subtree(line, node_level=False)
+        yield create_example(line)
 
-        # treat individual nodes as separate examples
-        for subtree in subtrees:
-            subtree = subtree.lower() if lower else subtree
+        if supervision:
+            subtrees = extract_subtree(line, node_level=False)
 
-            tokens = tokens_from_treestring(subtree)
-            tree = Tree.fromstring(subtree)  # use NLTK's Tree
-            label = int(line[1])
-            trans = transitions_from_treestring(line)
-            yield Example(tokens=tokens, tree=tree, label=label, transitions=trans)
+            for subtree in subtrees:
+                yield create_example(subtree)
+
+def create_example(treestring):
+    tokens = tokens_from_treestring(treestring)
+    tree = Tree.fromstring(treestring)  # use NLTK's Tree
+    label = int(treestring[1])
+    trans = transitions_from_treestring(treestring)
+    return Example(tokens=tokens, tree=tree, label=label, transitions=trans)
   
 def extract_subtree(treestring, node_level=False):
     ''' Extracts all subtrees from a .txt file containing all trees. '''
@@ -84,24 +78,22 @@ def extract_subtree(treestring, node_level=False):
                 output_.append(subtree)
     return output_
 
-def load_data(supervision=False, node_level=False):
+def load_data(supervision=False):
     """Function to load data."""
     LOWER = False  # we will keep the original casing
     print("Loading data into memory")
 
     if supervision:
-        train_data = list(examplereader_sv("trees/train.txt", lower=LOWER, node_level=node_level))
-        dev_data = list(examplereader_sv("trees/dev.txt", lower=LOWER, node_level=node_level))
-        test_data = list(examplereader_sv("trees/test.txt", lower=LOWER, node_level=node_level))
+        train_data = list(examplereader("trees/train.txt", lower=LOWER, supervision=supervision))
     else:
         train_data = list(examplereader("trees/train.txt", lower=LOWER))
-        dev_data = list(examplereader("trees/dev.txt", lower=LOWER))
-        test_data = list(examplereader("trees/test.txt", lower=LOWER))
+    dev_data = list(examplereader("trees/dev.txt", lower=LOWER))
+    test_data = list(examplereader("trees/test.txt", lower=LOWER))
 
     print("train set:", len(train_data))
     print("dev set:", len(dev_data))
     print("test set:", len(test_data))
-    
+
     return train_data, dev_data, test_data
 
 
