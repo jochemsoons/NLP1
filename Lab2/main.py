@@ -1,11 +1,7 @@
-import re
 import random
 import time
 import os
-import math
 import numpy as np
-import nltk
-# import matplotlib.pyplot as plt
 from collections import OrderedDict
 import argparse
 import torch
@@ -282,7 +278,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                 _, _, test_acc = eval_fn(
                     model, test_data, batch_size=eval_batch_size, 
                     batch_fn=batch_fn, prep_fn=prep_fn)
-                
+                    
                 print("best model iter {:d}: "
                     "train acc={:.4f}, dev acc={:.4f}, test acc={:.4f}".format(
                         best_iter, train_acc, dev_acc, test_acc))
@@ -303,9 +299,7 @@ def train(args, seed, device, train_data, dev_data, test_data):
     if args.model == 'BOW':
         bow_model = BOW(len(v.w2i), len(t2i), vocab=v)
         print(bow_model)
-
         bow_model = bow_model.to(device)
-
         optimizer = optim.Adam(bow_model.parameters(), lr=0.0005)
         return train_model(bow_model, optimizer, 
             train_data=train_data, dev_data=dev_data, test_data=test_data,
@@ -354,10 +348,8 @@ def train(args, seed, device, train_data, dev_data, test_data):
 
             # copy pre-trained word vectors into embeddings table
             pt_deep_cbow_model.embed.weight.data.copy_(torch.from_numpy(vectors))
-
             # disable training the pre-trained embeddings
             pt_deep_cbow_model.embed.weight.requires_grad = False
-
             # move model to specified device
             pt_deep_cbow_model = pt_deep_cbow_model.to(device)
 
