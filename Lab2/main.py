@@ -235,7 +235,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                         early_stopping_count = 0
                         print("iter %r: dev acc=%.4f. Val improvement: early stopping count=%r" % (iter_i, accuracy, early_stopping_count))  
                 accuracies.append(accuracy)
-            
+
                     
                 # save best model parameters
                 if accuracy > best_eval:
@@ -424,9 +424,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
     parser.add_argument('--childsum', default=False, action='store_true')
-    # arguments for supervision and/or node level supervision.
+    # arguments for supervision and/or node level supervision
     parser.add_argument('--supervision', default=False, action='store_true')
-    parser.add_argument('--node_level', default=False, action='store_true')
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     # Argument for random permutation experiment.
     parser.add_argument('--random_permute', default=False, action='store_true')
@@ -445,11 +444,7 @@ if __name__ == '__main__':
 
     # Random permute of input can only be performed for LSTM model:
     if args.random_permute and (args.model != 'LSTM' or args.split_sentence_lengths):
-        raise AssertionError("Random permute experiment can only be performed for LSTM model (single run).")
-
-    if (args.node_level and not args.supervision):
-        raise AssertionError("Node level supervision can only be enabled with --supervision set to True.")
-    
+        raise AssertionError("Random permute experiment can only be performed for LSTM model (single run)")
     if (args.supervision and args.model != 'TreeLSTM'):
         raise AssertionError("Node supervision experiment can only be performed for TreeLSTM model (single run).")
 
@@ -461,7 +456,7 @@ if __name__ == '__main__':
     print("Running on:", device)
     
     # Load data.
-    train_data, dev_data, test_data = load_data(supervision=args.supervision, node_level=args.node_level)
+    train_data, dev_data, test_data = load_data(supervision=args.supervision)
 
     # Single model, run 3 times with different seeds.
     if args.model != 'all' and not args.split_sentence_lengths:
@@ -500,7 +495,7 @@ if __name__ == '__main__':
             print("MODEL RESULTS:", model)
             print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
             print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
-    
+
     # Run all models 3 times (3 seeds, evaluate on 4 different test sets) 
     elif args.model == 'all' and args.split_sentence_lengths:
         print("Running experiments on splitted test datasets.")
@@ -518,6 +513,3 @@ if __name__ == '__main__':
                     scores.append(test_accs)
                     best_iters.append(best_iter)
                 pdump(scores, "scores_{}_test_only".format(model))
-
-
-            
