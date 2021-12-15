@@ -278,7 +278,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                 _, _, test_acc = eval_fn(
                     model, test_data, batch_size=eval_batch_size, 
                     batch_fn=batch_fn, prep_fn=prep_fn)
-                    
+                
                 print("best model iter {:d}: "
                     "train acc={:.4f}, dev acc={:.4f}, test acc={:.4f}".format(
                         best_iter, train_acc, dev_acc, test_acc))
@@ -384,8 +384,7 @@ def train(args, seed, device, train_data, dev_data, test_data):
 
         elif args.model == 'TreeLSTM':
             tree_model = TreeLSTMClassifier(
-                len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v)
-
+                len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v, childsum=args.childsum)
             with torch.no_grad():
                 tree_model.embed.weight.data.copy_(torch.from_numpy(vectors))
                 tree_model.embed.weight.requires_grad = False
@@ -414,6 +413,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_every', type=int, default=500)
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
+    parser.add_argument('--childsum', default=False, action='store_true')
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     parser.add_argument('--random_permute', default=False, action='store_true')
     parser.add_argument('--plot_data_statistics', default=False, action='store_true')
@@ -441,7 +441,7 @@ if __name__ == '__main__':
     # Load data.
     train_data, dev_data, test_data = load_data()
 
-    # Single model, run 4 times with different seeds.
+    # Single model, run 3 times with different seeds.
     if args.model != 'all' and not args.split_sentence_lengths:
         scores = []
         best_iters = []
