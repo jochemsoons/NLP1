@@ -10,7 +10,7 @@ if __name__ == '__main__':
     labels = ['0-10', '10-20', '20-30', '30+']
     x = np.arange(len(labels))  # the label locations
     width = 0.15
-    models = ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'LSTM']
+    models = ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']
     for i, model in enumerate(models):
         scores = np.asarray(pload('scores_{}_test_only'.format(model)))
         mean_scores = np.mean(scores, axis=0)

@@ -1,5 +1,7 @@
 from collections import namedtuple
 from collections import Counter, OrderedDict, defaultdict
+import nltk
+nltk.download('punkt')
 from nltk import Tree, word_tokenize
 import re
 import numpy as np
@@ -12,7 +14,7 @@ def filereader(path):
     with open(path, mode="r", encoding="utf-8") as f:
         for line in f:
             yield line.strip().replace("\\","")
-            
+
 
 def tokens_from_treestring(s):
     """extract the tokens from a sentiment tree"""

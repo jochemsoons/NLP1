@@ -424,13 +424,16 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
     parser.add_argument('--childsum', default=False, action='store_true')
-    # arguments for supervision and/or node level supervision
+    # arguments for supervision and/or node level supervision.
     parser.add_argument('--supervision', default=False, action='store_true')
     parser.add_argument('--node_level', default=False, action='store_true')
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
+    # Argument for random permutation experiment.
     parser.add_argument('--random_permute', default=False, action='store_true')
+    # Argument to plot data statistics.
     parser.add_argument('--plot_data_statistics', default=False, action='store_true')
-    parser.add_argument('--split_sentence_lengths', default=None, choices=['all', 'test'])
+    # Argument for difference sentence length experiment.
+    parser.add_argument('--split_sentence_lengths', default=False, action='store_true')
     args = parser.parse_args()
 
     # Print parsing arguments.
@@ -442,7 +445,13 @@ if __name__ == '__main__':
 
     # Random permute of input can only be performed for LSTM model:
     if args.random_permute and (args.model != 'LSTM' or args.split_sentence_lengths):
-        raise AssertionError("Random permute experiment can only be performed for LSTM model (single run)")
+        raise AssertionError("Random permute experiment can only be performed for LSTM model (single run).")
+
+    if (args.node_level and not args.supervision):
+        raise AssertionError("Node level supervision can only be enabled with --supervision set to True.")
+    
+    if (args.supervision and args.model != 'TreeLSTM'):
+        raise AssertionError("Node supervision experiment can only be performed for TreeLSTM model (single run).")
 
     if args.plot_data_statistics:
         plot_data_statistics()
@@ -491,40 +500,9 @@ if __name__ == '__main__':
             print("MODEL RESULTS:", model)
             print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
             print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
-
-    # Run all models 3 * 4 times (3 seeds, 4 datasets of different sentence lengths) 
-    elif args.model == 'all' and args.split_sentence_lengths == 'all':
-        print("Running experiments on splitted train, val and test datasets.")
-        train_sets = split_sentence_lengths(train_data)
-        dev_sets  = split_sentence_lengths(dev_data)
-        test_sets = split_sentence_lengths(test_data)
-        
-        for i in range(4):
-            train_data = train_sets[i]
-            dev_data = dev_sets[i]
-            test_data = test_sets[i]
-            
-            for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:
-                scores = []
-                best_iters = []
-                for seed in [42, 43, 44]:
-                    args.model = model
-                    if model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW']:
-                        args.num_iterations = 30000
-                    else:
-                        args.num_iterations = 25000
-                    loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
-                    scores.append(test_acc*100)
-                    best_iters.append(best_iter)
-
-                print("MODEL RESULTS:", model)
-                print("SENTENCE SPLIT:", i)
-                print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
-                print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
-                pdump(scores, "scores_{}_{}".format(model, i))
     
     # Run all models 3 times (3 seeds, evaluate on 4 different test sets) 
-    elif args.model == 'all' and args.split_sentence_lengths == 'test':
+    elif args.model == 'all' and args.split_sentence_lengths:
         print("Running experiments on splitted test datasets.")
         test_sets = split_sentence_lengths(test_data)
         for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:

@@ -5,9 +5,9 @@
 #SBATCH --job-name=NLP1_jobs
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=3
-#SBATCH --time=6:00:00
+#SBATCH --time=10:00:00
 #SBATCH --mem=50000M
-#SBATCH --output=./SLURM_output/NLP1_run_all_%A.out
+#SBATCH --output=./SLURM_output/NLP1_sent_split_test_%A.out
 
 module purge
 module load 2021
@@ -18,4 +18,4 @@ cd $HOME/NLP1
 # Activate your environment
 source activate nlp1
 # Run your code
-srun python -u main.py --model all --pt_embed w2v --split_sentence_lengths
+srun python -u main.py --model all --pt_embed w2v --split_sentence_lengths test
