@@ -17,6 +17,15 @@ This repository contains the code for the second Lab assignment of the NLP1 cour
 
 We transformed the code written in the colab notebook to a repository containing multiple files, as we found this a more practical way of working on this project and running the code. We have also included the .ipynb notebook in this folder in case this might help with grading our work.
 
+## Files included
+
+The files where you can find our code:
+- main.py: this file contains the code pipeline for running all experiments, including the train_model() function.
+- data.py: this file contains all code for loading in the data, creating vocabularies, creating the shuffled input, splitting a dataset in bins of different lengths and extracting subtrees from sentences.
+- models.py: this file contains the code for all our model implementations, including: BOW, CBOW, DeepCBOW, PT_DeepCBOW, LSTM, TreeLSTM and the Child-Sum TreeLSTM.
+- utils.py: this file contains some small helper functions such as setting the seed, printing model parameters and dumping/loading pickle files.
+- plot_sentence_exp.py: this file contains the code to create the plot belonging to the sentence length experiment (more about this below when we show some examples to run our code).
+
 ## Instructions of usage
 
 We provide an environment file in environment.yml which you might use to run our code:
