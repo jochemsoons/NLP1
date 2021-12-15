@@ -23,12 +23,14 @@ def print_parameters(model):
   print("\nTotal number of parameters: {}\n".format(total))
 
 
+# Function to dump a variable as a pickle file.
 def pdump(values, filename, dirname='./pickle_dumps/') :
     if not os.path.exists(dirname):
         os.makedirs(dirname)
     print("Dumping " + filename)
     pickle.dump(values, open(os.path.join(dirname + filename + '_pdump.pkl'), 'wb'))
 
+# Function to load a variable from a pickle file.
 def pload(filename, dirname='./pickle_dumps/') :
     if not os.path.exists(dirname):
         os.makedirs(dirname)

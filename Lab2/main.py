@@ -436,8 +436,8 @@ if __name__ == '__main__':
     print("#" * 80)
 
     # Random permute of input can only be performed for LSTM model:
-    if args.random_permute and args.model != 'LSTM':
-        raise AssertionError("Random permute experiment can only be performed for LSTM model")
+    if args.random_permute and (args.model != 'LSTM' or args.split_sentence_lengths):
+        raise AssertionError("Random permute experiment can only be performed for LSTM model (single run)")
 
     if args.plot_data_statistics:
         plot_data_statistics()
@@ -474,12 +474,8 @@ if __name__ == '__main__':
                 args.model = model
                 if model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW']:
                     args.num_iterations = 30000
-                    args.eval_every=500
-                    args.print_every=500
                 else:
                     args.num_iterations = 25000
-                    args.eval_every=500
-                    args.print_every=500
                 loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
                 scores.append(test_acc*100)
                 best_iters.append(best_iter)
@@ -491,7 +487,34 @@ if __name__ == '__main__':
             print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
             print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
 
+    # Run all models 3 * 4 times (3 seeds, 4 datasets of different sentence lengths) 
     elif args.model == 'all' and args.split_sentence_lengths:
-        train_0, train_1, train_2, train_3 = split_sentence_lengths(train_data)
-        dev_0, dev_1, dev_2, dev_3 = split_sentence_lengths(train_data)
-        test_0, train_1, train_2, train_3 = split_sentence_lengths(train_data)
+        train_sets = split_sentence_lengths(train_data)
+        dev_sets  = split_sentence_lengths(dev_data)
+        test_sets = split_sentence_lengths(test_data)
+        
+        for i in range(4):
+            train_data = train_sets[i]
+            dev_data = train_sets[i]
+            test_data = train_sets[i]
+            
+            for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:
+                scores = []
+                best_iters = []
+                for seed in [42, 43, 44]:
+                    args.model = model
+                    if model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW']:
+                        args.num_iterations = 30000
+                    else:
+                        args.num_iterations = 25000
+                    loss_list, acc_list, best_iter, train_acc, dev_acc, test_acc = train(args, seed, device, train_data, dev_data, test_data)
+                    scores.append(test_acc*100)
+                    best_iters.append(best_iter)
+
+                print("MODEL RESULTS:", model)
+                print("SENTENCE SPLIT:", i)
+                print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
+                print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
+                pdump(scores, "scores_{}_{}".format(model, i))
+
+            

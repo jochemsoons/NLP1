@@ -195,16 +195,12 @@ def split_sentence_lengths(data_set):
     sents_30_up = []
     for ex in data_set:
         if len(ex.tokens) <= 10:
-            print("0-10", len(ex.tokens))
             sents_0_10.append(ex)
         elif 10 < len(ex.tokens) <= 20:
-            print("10-20", len(ex.tokens))
             sents_10_20.append(ex)
         elif 20 < len(ex.tokens) <= 30:
-            print("20-30", len(ex.tokens))
             sents_20_30.append(ex)
         elif len(ex.tokens) > 30:
-            print("30-up", len(ex.tokens))
             sents_30_up.append(ex)
-    return sents_0_10, sents_10_20, sents_20_30, sents_30_up
+    return [sents_0_10, sents_10_20, sents_20_30, sents_30_up]
     
