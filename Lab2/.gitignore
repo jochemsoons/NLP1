@@ -4,3 +4,4 @@ model_ckpts/
 pickle_dumps/
 SLURM_output/
 plots/
+.job
