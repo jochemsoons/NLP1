@@ -1,6 +1,6 @@
 from collections import namedtuple
 from collections import Counter, OrderedDict, defaultdict
-from nltk import Tree
+from nltk import Tree, word_tokenize
 import re
 import numpy as np
 import pandas as pd
@@ -12,7 +12,6 @@ def filereader(path):
     with open(path, mode="r", encoding="utf-8") as f:
         for line in f:
             yield line.strip().replace("\\","")
-
 
 def tokens_from_treestring(s):
     """extract the tokens from a sentiment tree"""
@@ -37,21 +36,73 @@ def examplereader(path, lower=False):
         label = int(line[1])
         trans = transitions_from_treestring(line)
         yield Example(tokens=tokens, tree=tree, label=label, transitions=trans)
-  
 
-def load_data():
+def examplereader_sv(path, lower=False, node_level=False):
+    """Returns all node examples in a file one by one."""
+    # A simple way to define a class is using namedtuple.
+    Example = namedtuple("Example", ["tokens", "tree", "label", "transitions"])
+    for line in filereader(path):
+        
+        subtrees = extract_subtree(line, node_level=False)
+
+        # treat individual nodes as separate examples
+        for subtree in subtrees:
+            subtree = subtree.lower() if lower else subtree
+
+            tokens = tokens_from_treestring(subtree)
+            tree = Tree.fromstring(subtree)  # use NLTK's Tree
+            label = int(line[1])
+            trans = transitions_from_treestring(line)
+            yield Example(tokens=tokens, tree=tree, label=label, transitions=trans)
+  
+def extract_subtree(treestring, node_level=False):
+    ''' Extracts all subtrees from a .txt file containing all trees. '''
+    stack = []
+    output_ = []
+
+    for char in treestring:
+        if char != ')':
+            stack.append(char)
+        else:
+            subtree_char = stack.pop()
+            subtree = subtree_char + char
+
+            # keep adding to subtree until a left bracket is reached
+            while subtree.count('(') != subtree.count(')'):
+
+                subtree_char = stack.pop()
+                subtree = subtree_char + subtree
+        
+            # add all popped chars back to the stack
+            for c0 in subtree: 
+                stack.append(c0)
+
+            # treating individual nodes or not as examples
+            if node_level:
+                output_.append(subtree)
+            elif len(word_tokenize(subtree)) > 4:
+                output_.append(subtree)
+    return output_
+
+def load_data(supervision=False, node_level=False):
     """Function to load data."""
     LOWER = False  # we will keep the original casing
     print("Loading data into memory")
-    train_data = list(examplereader("trees/train.txt", lower=LOWER))
-    dev_data = list(examplereader("trees/dev.txt", lower=LOWER))
-    test_data = list(examplereader("trees/test.txt", lower=LOWER))
+
+    if supervision:
+        train_data = list(examplereader_sv("trees/train.txt", lower=LOWER, node_level=node_level))
+        dev_data = list(examplereader_sv("trees/dev.txt", lower=LOWER, node_level=node_level))
+        test_data = list(examplereader_sv("trees/test.txt", lower=LOWER, node_level=node_level))
+    else:
+        train_data = list(examplereader("trees/train.txt", lower=LOWER))
+        dev_data = list(examplereader("trees/dev.txt", lower=LOWER))
+        test_data = list(examplereader("trees/test.txt", lower=LOWER))
 
     print("train set:", len(train_data))
     print("dev set:", len(dev_data))
     print("test set:", len(test_data))
+    
     return train_data, dev_data, test_data
-
 
 
 class OrderedCounter(Counter, OrderedDict):
