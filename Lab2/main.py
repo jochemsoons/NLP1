@@ -382,8 +382,13 @@ def train(args, seed, device, train_data, dev_data, test_data):
                 eval_fn=evaluate)
 
         elif args.model == 'TreeLSTM':
-            tree_model = TreeLSTMClassifier(
-                len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v)
+
+            if args.childsum:
+                tree_model = TreeLSTMClassifier(
+                    len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v)
+            else:
+                tree_model = TreeLSTMClassifier(
+                    len(pretrained_v.w2i), 300, 150, len(t2i), pretrained_v)
 
             with torch.no_grad():
                 tree_model.embed.weight.data.copy_(torch.from_numpy(vectors))
@@ -413,6 +418,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
     parser.add_argument('--run_all', default=False, action='store_true')
+    parser.add_argument('--childsum', default=False, action='store_true')
+
     args = parser.parse_args()
 
     # Print parsing arguments.

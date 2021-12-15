@@ -219,6 +219,66 @@ class LSTMClassifier(nn.Module):
         logits = self.output_layer(final)
         return logits
 
+class ChildSumTreeLSTMCell(nn.module):
+    """A Binary Tree LSTM cell with Child-Sum"""
+
+    def __init__(self, input_size, hidden_size, bias=True):
+        """Creates the weights for this LSTM"""
+        super(ChildSumTreeLSTMCell, self).__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bias = bias
+
+        self.reduce_layer = nn.Linear(2 * hidden_size, 5 * hidden_size)
+        self.dropout_layer = nn.Dropout(p=0.25)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        """This is PyTorch's default initialization method"""
+        stdv = 1.0 / math.sqrt(self.hidden_size)
+        for weight in self.parameters():
+            weight.data.uniform_(-stdv, stdv)  
+
+    def forward(self, hx_l, hx_r, mask=None):
+        """
+        hx_l is ((batch, hidden_size), (batch, hidden_size))
+        hx_r is ((batch, hidden_size), (batch, hidden_size))    
+        """
+        prev_h_l, prev_c_l = hx_l  # left child
+        prev_h_r, prev_c_r = hx_r  # right child
+
+        B = prev_h_l.size(0)
+
+        # we concatenate the left and right children
+        # you can also project from them separately and then sum
+        children = prev_h_l + prev_h_r
+        
+        # project the combined children into a 5D tensor for i,fl,fr,g,o
+        # this is done for speed, and you could also do it separately
+        proj = self.reduce_layer(children)  # shape: B x 5D
+
+        # each shape: B x D
+        i, f_l, f_r, g, o = torch.chunk(proj, 5, dim=-1)
+
+        # main Tree LSTM computation
+        
+        # YOUR CODE HERE
+        # You only need to complete the commented lines below.
+
+        # The shape of each of these is [batch_size, hidden_size]
+
+        i = torch.sigmoid(i)
+        f_l = torch.sigmoid(f_l)    
+        f_r = torch.sigmoid(f_r)
+        g = torch.tanh(g)
+        o = torch.sigmoid(o)
+
+        c = f_l * prev_c_l + f_r * prev_c_r + i * g
+        h = o * torch.tanh(c)
+        
+        return h, c
 
 class TreeLSTMCell(nn.Module):
     """A Binary Tree LSTM cell"""
@@ -308,14 +368,18 @@ def unbatch(state):
 class TreeLSTM(nn.Module):
     """Encodes a sentence using a TreeLSTMCell"""
 
-    def __init__(self, input_size, hidden_size, bias=True):
+    def __init__(self, input_size, hidden_size, bias=True, childsum=False):
         """Creates the weights for this LSTM"""
         super(TreeLSTM, self).__init__()
 
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.bias = bias
-        self.reduce = TreeLSTMCell(input_size, hidden_size)
+
+        if childsum:
+            self.reduce = ChildSumTreeLSTMCell(input_size, hidden_size)
+        else:
+            self.reduce = TreeLSTMCell(input_size, hidden_size)
 
         # project word to initial c
         self.proj_x = nn.Linear(input_size, hidden_size)
