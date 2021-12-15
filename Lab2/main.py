@@ -12,7 +12,7 @@ import torch
 from torch import nn
 from torch import optim
 
-from data import load_data, create_vocabulary, build_pt_vocab
+from data import load_data, create_vocabulary, build_pt_vocab, plot_data_statistics, split_sentence_lengths
 from models import BOW, CBOW, DeepCBOW, PTDeepCBOW, LSTMClassifier, TreeLSTMClassifier
 from utils import set_seed, print_parameters, pdump, pload
 
@@ -424,6 +424,8 @@ if __name__ == '__main__':
     parser.add_argument('--early_stopping', default=False, action='store_true')
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     parser.add_argument('--random_permute', default=False, action='store_true')
+    parser.add_argument('--plot_data_statistics', default=False, action='store_true')
+    parser.add_argument('--split_sentence_lengths', default=False, action='store_true')
     args = parser.parse_args()
 
     # Print parsing arguments.
@@ -437,6 +439,9 @@ if __name__ == '__main__':
     if args.random_permute and args.model != 'LSTM':
         raise AssertionError("Random permute experiment can only be performed for LSTM model")
 
+    if args.plot_data_statistics:
+        plot_data_statistics()
+
     # Setup device.
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Running on:", device)
@@ -444,8 +449,8 @@ if __name__ == '__main__':
     # Load data.
     train_data, dev_data, test_data = load_data()
 
-    # Single run.
-    if args.model != 'all':
+    # Single model, run 4 times with different seeds.
+    if args.model != 'all' and not args.split_sentence_lengths:
         scores = []
         best_iters = []
         for i, seed in enumerate([42, 43, 44]):
@@ -461,7 +466,7 @@ if __name__ == '__main__':
         print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
     
     # Run all models 3 times with different seeds.
-    elif args.model == 'all':
+    elif args.model == 'all' and not args.split_sentence_lengths:
         for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:
             scores = []
             best_iters = []
@@ -485,3 +490,8 @@ if __name__ == '__main__':
             print("MODEL RESULTS:", model)
             print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
             print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
+
+    elif args.model == 'all' and args.split_sentence_lengths:
+        train_0, train_1, train_2, train_3 = split_sentence_lengths(train_data)
+        dev_0, dev_1, dev_2, dev_3 = split_sentence_lengths(train_data)
+        test_0, train_1, train_2, train_3 = split_sentence_lengths(train_data)

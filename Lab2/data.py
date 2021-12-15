@@ -3,6 +3,9 @@ from collections import Counter, OrderedDict, defaultdict
 from nltk import Tree
 import re
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
 
 # this function reads in a textfile and fixes an issue with "\\"
 def filereader(path): 
@@ -119,3 +122,89 @@ def build_pt_vocab(embed_f):
     print("Vocabulary size:", len(v.w2i))
     vectors = np.stack(vectors, axis=0)
     return v, vectors
+
+
+def plot_data_statistics():
+    print("Printing and plotting dataset statistics...")
+    train_set, dev_set, test_set = load_data()
+    
+    sent_lengths = []
+    labels = []
+    for data_set in (train_set, dev_set, test_set):
+        for ex in data_set:
+            sent_lengths.append(len(ex.tokens))
+            labels.append(ex.label)
+
+    """NOTE: code for creating bar plots adapted from https://stackoverflow.com/questions/61265580/matplotlib-bar-chart-for-number-of-occurrences"""
+    sorted_lenghts = sorted(sent_lengths)
+    sorted_counted = Counter(sorted_lenghts)
+    
+    range_length = list(range(max(sent_lengths))) # Get the largest value to get the range.
+    data_series = {}
+    for i in range_length:
+        data_series[i] = 0 # Initialize series so that we have a template and we just have to fill in the values.
+
+    for key, value in sorted_counted.items():
+        data_series[key] = value
+
+    data_series = pd.Series(data_series)
+    x_values = data_series.index
+
+    plt.figure()
+    plt.bar(x_values, data_series.values, color='blue')
+    plt.title("Distribution of sentence lengths in SST dataset")
+    plt.xlabel("Sentence length")
+    plt.ylabel("Number of occurences in dataset")
+    plt.tight_layout()
+
+    if not os.path.exists('./plots'):
+        os.makedirs('./plots')
+    plt.savefig('./plots/sent_lengths')
+
+    sorted_labels = sorted(labels)
+    sorted_counted = Counter(sorted_labels)
+    
+    range_length = list(range(max(labels))) # Get the largest value to get the range.
+    data_series = {}
+    for i in range_length:
+        data_series[i] = 0 # Initialize series so that we have a template and we just have to fill in the values.
+
+    for key, value in sorted_counted.items():
+        data_series[key] = value
+
+    data_series = pd.Series(data_series)
+    x_values = data_series.index
+    y_values = [(value / sum(data_series.values)) for value in data_series.values]
+    plt.figure()
+    plt.bar(x_values, y_values, color='blue')
+    plt.title("Distribution of sentiment labels in SST dataset")
+    plt.xlabel("Sentiment label")
+    x_labels = ["very negative", "negative", "neutral", "positive", "very positive"]
+    plt.xticks(x_values, x_labels, rotation=45)
+    plt.ylabel("Percentage in dataset")
+    plt.tight_layout()
+
+    if not os.path.exists('./plots'):
+        os.makedirs('./plots')
+    plt.savefig('./plots/sentiments_distr')
+    
+def split_sentence_lengths(data_set):
+    sents_0_10 = []
+    sents_10_20 = []
+    sents_20_30 = []
+    sents_30_up = []
+    for ex in data_set:
+        if len(ex.tokens) <= 10:
+            print("0-10", len(ex.tokens))
+            sents_0_10.append(ex)
+        elif 10 < len(ex.tokens) <= 20:
+            print("10-20", len(ex.tokens))
+            sents_10_20.append(ex)
+        elif 20 < len(ex.tokens) <= 30:
+            print("20-30", len(ex.tokens))
+            sents_20_30.append(ex)
+        elif len(ex.tokens) > 30:
+            print("30-up", len(ex.tokens))
+            sents_30_up.append(ex)
+    return sents_0_10, sents_10_20, sents_20_30, sents_30_up
+    
