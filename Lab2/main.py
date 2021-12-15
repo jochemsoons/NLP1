@@ -292,7 +292,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                     print("best model iter {:d}: "
                         "train acc={:.4f}, dev acc={:.4f}, test acc={:.4f}".format(
                             best_iter, train_acc, dev_acc, test_acc))
-                
+
                 return losses, accuracies, best_iter, train_acc, dev_acc, test_acc
 
 
@@ -424,6 +424,9 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=25)
     parser.add_argument('--early_stopping', default=False, action='store_true')
     parser.add_argument('--childsum', default=False, action='store_true')
+    # arguments for supervision and/or node level supervision
+    parser.add_argument('--supervision', default=False, action='store_true')
+    parser.add_argument('--node_level', default=False, action='store_true')
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     parser.add_argument('--random_permute', default=False, action='store_true')
     parser.add_argument('--plot_data_statistics', default=False, action='store_true')
@@ -449,7 +452,7 @@ if __name__ == '__main__':
     print("Running on:", device)
     
     # Load data.
-    train_data, dev_data, test_data = load_data()
+    train_data, dev_data, test_data = load_data(supervision=args.supervision, node_level=args.node_level)
 
     # Single model, run 3 times with different seeds.
     if args.model != 'all' and not args.split_sentence_lengths:
