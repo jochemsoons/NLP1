@@ -256,7 +256,7 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
             # done training
             if iter_i == num_iterations or (early_stopping and early_stopping_count >= early_stop_crit):
                 if early_stopping and early_stopping_count >= early_stop_crit:
-                    print("Found no improvement for %r validation iterations. Apply early stopping.")
+                    print("Found no improvement for {} validation iterations. Apply early stopping.".format(early_stop_crit))
                 print("Done training")
                 
                 # evaluate on train, dev, and test with best model
@@ -275,13 +275,23 @@ def train_model(model, optimizer, train_data, dev_data, test_data,
                 _, _, dev_acc = eval_fn(
                     model, dev_data, batch_size=eval_batch_size,
                     batch_fn=batch_fn, prep_fn=prep_fn)
-                _, _, test_acc = eval_fn(
-                    model, test_data, batch_size=eval_batch_size, 
-                    batch_fn=batch_fn, prep_fn=prep_fn)
-                
-                print("best model iter {:d}: "
-                    "train acc={:.4f}, dev acc={:.4f}, test acc={:.4f}".format(
-                        best_iter, train_acc, dev_acc, test_acc))
+                if len(test_data) == 4:
+                    test_acc = []
+                    for i in range(4):
+                        test_split_set = test_data[i]
+                        _, _, acc = eval_fn(
+                            model, test_split_set, batch_size=eval_batch_size, 
+                            batch_fn=batch_fn, prep_fn=prep_fn)
+                        test_acc.append(acc*100)
+                else:
+                    _, _, test_acc = eval_fn(
+                            model, test_data, batch_size=eval_batch_size, 
+                            batch_fn=batch_fn, prep_fn=prep_fn)
+
+                if len(test_data) != 4:
+                    print("best model iter {:d}: "
+                        "train acc={:.4f}, dev acc={:.4f}, test acc={:.4f}".format(
+                            best_iter, train_acc, dev_acc, test_acc))
                 
                 return losses, accuracies, best_iter, train_acc, dev_acc, test_acc
 
@@ -417,7 +427,7 @@ if __name__ == '__main__':
     parser.add_argument('--keep_ckpts', default=False, action='store_true')
     parser.add_argument('--random_permute', default=False, action='store_true')
     parser.add_argument('--plot_data_statistics', default=False, action='store_true')
-    parser.add_argument('--split_sentence_lengths', default=False, action='store_true')
+    parser.add_argument('--split_sentence_lengths', default=None, choices=['all', 'test'])
     args = parser.parse_args()
 
     # Print parsing arguments.
@@ -480,15 +490,16 @@ if __name__ == '__main__':
             print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
 
     # Run all models 3 * 4 times (3 seeds, 4 datasets of different sentence lengths) 
-    elif args.model == 'all' and args.split_sentence_lengths:
+    elif args.model == 'all' and args.split_sentence_lengths == 'all':
+        print("Running experiments on splitted train, val and test datasets.")
         train_sets = split_sentence_lengths(train_data)
         dev_sets  = split_sentence_lengths(dev_data)
         test_sets = split_sentence_lengths(test_data)
         
         for i in range(4):
             train_data = train_sets[i]
-            dev_data = train_sets[i]
-            test_data = train_sets[i]
+            dev_data = dev_sets[i]
+            test_data = test_sets[i]
             
             for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:
                 scores = []
@@ -508,5 +519,24 @@ if __name__ == '__main__':
                 print("ACC: {:.2f}, std: {:.2f}".format(np.mean(scores), np.std(scores)))
                 print("BEST ITER: {:.0f}".format(np.mean(best_iters)))
                 pdump(scores, "scores_{}_{}".format(model, i))
+    
+    # Run all models 3 times (3 seeds, evaluate on 4 different test sets) 
+    elif args.model == 'all' and args.split_sentence_lengths == 'test':
+        print("Running experiments on splitted test datasets.")
+        test_sets = split_sentence_lengths(test_data)
+        for model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW', 'LSTM', 'TreeLSTM']:
+                scores = []
+                best_iters = []
+                for seed in [42, 43, 44]:
+                    args.model = model
+                    if model in ['BOW', 'CBOW', 'DeepCBOW', 'pt_DeepCBOW']:
+                        args.num_iterations = 30000
+                    else:
+                        args.num_iterations = 25000
+                    loss_list, acc_list, best_iter, train_acc, dev_acc, test_accs = train(args, seed, device, train_data, dev_data, test_sets)
+                    scores.append(test_accs)
+                    best_iters.append(best_iter)
+                pdump(scores, "scores_{}_test_only".format(model))
+
 
             
