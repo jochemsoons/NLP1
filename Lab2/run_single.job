@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=3
 #SBATCH --time=6:00:00
 #SBATCH --mem=50000M
-#SBATCH --output=./SLURM_output/NLP1_supervision_%A.out
+#SBATCH --output=./SLURM_output/NLP1_supervision_glove_%A.out
 
 module purge
 module load 2021
@@ -18,4 +18,4 @@ cd $HOME/NLP1
 # Activate your environment
 source activate nlp1
 # Run your code
-srun python -u main.py --model TreeLSTM --pt_embed w2v --num_iterations 25000 --print_every 500 --eval_every 500 --supervision
+srun python -u main.py --model TreeLSTM --pt_embed glove --num_iterations 25000 --print_every 500 --eval_every 500 --supervision
